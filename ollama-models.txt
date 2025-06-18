@@ -1,0 +1,59 @@
+# Deepseek R1
+
+## DeepSeek-R1-0528-Qwen3-8B
+ollama run deepseek-r1
+
+## DeepSeek-R1
+ollama run deepseek-r1:671b
+
+# Deepseek Distilled
+
+## DeepSeek-R1-0528-Qwen3-8B
+ollama run deepseek-r1:8b
+
+## DeepSeek-R1-Distill-Qwen-1.5B
+ollama run deepseek-r1:1.5b
+
+## DeepSeek-R1-Distill-Qwen-7B
+ollama run deepseek-r1:7b
+
+## DeepSeek-R1-Distill-Qwen-14B
+ollama run deepseek-r1:14b
+
+## DeepSeek-R1-Distill-Qwen-32B
+ollama run deepseek-r1:32b
+
+## DeepSeek-R1-Distill-Llama-70B
+ollama run deepseek-r1:70b
+
+# Gemma
+
+### Text
+
+## 1B parameter model (32k context window)
+ollama run gemma3:1b 
+
+### Multimodal (Vision)
+
+## 4B parameter model (128k context window)
+ollama run gemma3:4b
+
+## 12B parameter model (128k context window)
+ollama run gemma3:12b
+
+## 27B parameter model (128k context window)
+ollama run gemma3:27b
+
+### Quantization Aware Trained Models (QAT)
+
+## 1B parameter model
+ollama run gemma3:1b-it-qat
+
+## 4B parameter model
+ollama run gemma3:4b-it-qat
+
+## 12B parameter model
+ollama run gemma3:12b-it-qat
+
+## 27B parameter model
+ollama run gemma3:27b-it-qat

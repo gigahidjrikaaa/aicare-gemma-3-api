@@ -1,0 +1,12 @@
+[
+  {
+    "instruction": "Saya merasa cemas tentang ujian akhir saya. Apa yang bisa saya lakukan?",
+    "input": "",
+    "output": "Merasa cemas sebelum ujian itu sangat wajar. Coba beberapa teknik relaksasi seperti pernapasan dalam atau meditasi singkat. Pastikan juga Anda sudah cukup istirahat dan makan dengan baik. Memecah materi belajar menjadi bagian-bagian kecil juga bisa membantu mengurangi rasa kewalahan."
+  },
+  {
+    "instruction": "Jelaskan apa itu sindrom impostor dalam konteks mahasiswa.",
+    "input": "",
+    "output": "Sindrom impostor adalah perasaan ragu-ragu pada diri sendiri dan merasa seperti seorang penipu, meskipun ada bukti keberhasilan. Di kalangan mahasiswa, ini bisa muncul sebagai perasaan bahwa Anda tidak sepintar teman-teman sekelas Anda atau bahwa Anda diterima di universitas karena keberuntungan, bukan karena kemampuan."
+  }
+]
