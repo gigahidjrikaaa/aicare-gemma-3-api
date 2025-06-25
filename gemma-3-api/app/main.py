@@ -23,8 +23,8 @@ class GenerationResponse(BaseModel):
 def load_model():
     """Downloads the 12B GGUF model and loads it into llama.cpp."""
     # Pointing to the 12B version of the GGUF model
-    model_repo_id = "MaziyarPanahi/gemma-3-12b-it-GGUF"
-    model_filename = "gemma-3-12b-it.Q4_K_M.gguf" # A ~7.5GB 4-bit quantization
+    model_repo_id = "google/gemma-3-12b-it-qat-q4_0-gguf"
+    model_filename = "gemma-3-12b-it-q4_0.gguf" # A ~7.5GB 4-bit quantization
 
     logger.info(f"Downloading model '{model_filename}' from repo '{model_repo_id}'...")
 
@@ -82,3 +82,54 @@ async def generate_text(request: GenerationRequest):
     except Exception as e:
         logger.error(f"Error during text generation: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate text.")
+
+@app.post("/v1/generate_stream", response_model=GenerationResponse)
+async def generate_text_stream(request: GenerationRequest):
+    llm = ml_models.get("llm")
+    if not llm:
+        raise HTTPException(status_code=503, detail="Model is not available")
+
+    try:
+        logger.info(f"Generating text stream for prompt: '{request.prompt[:50]}...'")
+
+        output = llm(
+            request.prompt,
+            max_tokens=request.max_tokens,
+            temperature=request.temperature,
+            stop=["<|endoftext|>", "<|im_end|>"],
+            stream=True
+        )
+
+        result_text = ""
+        for chunk in output:
+            result_text += chunk['choices'][0]['text']
+            yield GenerationResponse(generated_text=result_text)
+
+    except Exception as e:
+        logger.error(f"Error during text generation stream: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate text stream.")
+
+# List models endpoint
+@app.get("/v1/models", response_model=dict)
+async def list_models():
+    return {
+        "models": [
+            {
+                "id": "google/gemma-3-12b-it-qat-q4_0-gguf",
+                "name": "Gemma 3 12B Q4_0 GGUF",
+                "description": "Google's Gemma 3 model, 12B parameters, quantized to 4-bit."
+            }
+        ]
+    }
+@app.get("/v1/models/{model_id}", response_model=dict)
+async def get_model_info(model_id: str):
+    if model_id == "google/gemma-3-12b-it-qat-q4_0-gguf":
+        return {
+            "id": model_id,
+            "name": "Gemma 3 12B Q4_0 GGUF",
+            "description": "Google's Gemma 3 model, 12B parameters, quantized to 4-bit."
+        }
+    else:
+        raise HTTPException(status_code=404, detail="Model not found.")
+
+    
