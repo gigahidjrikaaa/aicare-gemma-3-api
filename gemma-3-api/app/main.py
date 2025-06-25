@@ -39,8 +39,10 @@ def load_model():
 
     llm = Llama(
         model_path=model_path,
-        n_gpu_layers=-1,  # Offload all possible layers to GPU
-        n_ctx=4096,       # 4K context is fine for a 12B model on 24GB VRAM
+        n_gpu_layers=-1,  # Use all available GPU layers
+        n_batch=2048,      # Batch size for processing
+        n_threads=10,       # Number of threads for processing
+        n_ctx=32768,      # Context size
         verbose=True
     )
 
