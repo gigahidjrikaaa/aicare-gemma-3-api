@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  gemma_service:
+    image: gemma-3-api
+    container_name: gemma_service
+    restart: always
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - ~/.cache/huggingface:/home/appuser/.cache/huggingface
+    environment:
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN}
+    # Expose the port to the host machine for direct testing/access
+    ports:
+      - "6666:6666"
+    networks:
+      # Connect this service to our shared network
+      - shared_services_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6666/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+networks:
+  # Declare that the network is external and has been created manually
+  shared_services_network:
+    external: true
