@@ -1,7 +1,7 @@
 # app/main.py (Final GGUF Version for 12B Model)
 import os
 import logging
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from huggingface_hub import hf_hub_download
@@ -110,6 +110,42 @@ async def generate_text_stream(request: GenerationRequest):
     except Exception as e:
         logger.error(f"Error during text generation stream: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate text stream.")
+
+@app.websocket("/v1/generate_ws")
+async def generate_ws(websocket: WebSocket):
+    await websocket.accept()
+    llm = ml_models.get("llm")
+    if not llm:
+        await websocket.close(code=1011, reason="Model is not available")
+        return
+
+    try:
+        while True:
+            data = await websocket.receive_json()
+            request = GenerationRequest(**data)
+
+            logger.info(f"Generating text stream for prompt: '{request.prompt[:50]}...'")
+
+            output = llm(
+                request.prompt,
+                max_tokens=request.max_tokens,
+                temperature=request.temperature,
+                stop=["<|endoftext|>", "<|im_end|>"],
+                stream=True
+            )
+
+            for chunk in output:
+                token = chunk['choices'][0]['text']
+                await websocket.send_json({"token": token})
+
+            await websocket.send_json({"status": "done"})
+
+    except WebSocketDisconnect:
+        logger.info("Client disconnected from WebSocket.")
+    except Exception as e:
+        logger.error(f"Error in WebSocket: {e}")
+        await websocket.close(code=1011, reason="An internal error occurred.")
+
 
 # List models endpoint
 @app.get("/v1/models", response_model=dict)

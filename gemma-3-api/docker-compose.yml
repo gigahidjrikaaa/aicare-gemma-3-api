@@ -2,6 +2,7 @@ version: '3.8'
 
 services:
   gemma_service:
+    build: .
     image: gemma-3-api
     container_name: gemma_service
     restart: always

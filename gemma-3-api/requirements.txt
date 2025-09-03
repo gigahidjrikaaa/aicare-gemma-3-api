@@ -6,3 +6,4 @@ pydantic
 llama-cpp-python
 
 huggingface-hub==0.24.1
+websockets
