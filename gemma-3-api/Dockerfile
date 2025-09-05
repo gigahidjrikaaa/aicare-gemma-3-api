@@ -1,42 +1,57 @@
-# Dockerfile for GGUF / llama-cpp-python
-# This version includes all necessary build tools and correct flags for compilation.
-
-FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04
+# Stage 1: Builder
+FROM nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV PIP_NO_CACHE_DIR=true
 
-# Install Python and all necessary build tools (git, cmake, ninja)
+# Install Python and build essentials
 RUN apt-get update && \
-    apt-get install -y python3.11 python3-pip git cmake ninja-build && \
+    apt-get install -y --no-install-recommends \
+    python3.11 python3-pip python3.11-venv git cmake ninja-build && \
     rm -rf /var/lib/apt/lists/*
-    
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
 
-# Set the library path to include CUDA stubs for the linker during build.
-# This is crucial for resolving linker errors.
-ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs
+# Create and activate a virtual environment
+RUN python3.11 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Set build arguments for llama-cpp-python to enable CUDA support using the new flag.
-ARG CMAKE_ARGS="-DGGML_CUDA=on"
+# Upgrade pip
+RUN pip install --no-cache-dir --upgrade pip
+
+# Check for pre-built wheels
+RUN pip index versions llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124/
+
+# Set environment variables to compile llama-cpp-python with CUDA support.
+ENV CMAKE_ARGS="-DGGML_CUDA=on"
 ENV FORCE_CMAKE=1
 
-# Create a non-root user with the same IDs as the host user to prevent permission errors.
+# Install dependencies from requirements.txt
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# ==================================================================
+# Stage 2: Final Runtime Stage
+# ==================================================================
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Create a non-root user for security
 ARG UID=1000
 ARG GID=1000
-RUN groupadd -g $GID appuser && useradd -m -s /bin/bash -u $UID -g $GID appuser
-    
-USER appuser
+RUN groupadd -g $GID appuser && useradd --create-home --no-log-init -u $UID -g $GID appuser
 WORKDIR /home/appuser/app
 
-COPY --chown=appuser:appuser requirements.txt .
+# Copy the virtual environment from the builder stage
+COPY --from=builder /opt/venv /opt/venv
 
-# Install python dependencies from requirements.txt
-RUN pip3 install -r requirements.txt
-
+# Copy application code
 COPY --chown=appuser:appuser ./app .
+
+USER appuser
+
+# Set the PATH to use the Python from our virtual environment
+ENV PATH="/opt/venv/bin:$PATH"
 
 EXPOSE 6666
 
-# Use the absolute path to uvicorn to ensure it's found.
-CMD ["/home/appuser/.local/bin/uvicorn", "main:app", "--host", "0.0.0.0", "--port", "6666"]
+# Command to run your application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "6666"]

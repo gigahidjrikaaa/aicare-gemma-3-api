@@ -25,8 +25,23 @@ To start a generation, the client must send a JSON message with the following st
 ```
 
 - **`prompt`** (str, required): The initial text to start the generation from.
-- **`max_tokens`** (int, optional, default: `512`): The maximum number of tokens to generate.
-- **`temperature`** (float, optional, default: `0.7`): The sampling temperature. Higher values make the output more random.
+
+### Sampling Parameters
+
+In addition to the prompt, you can specify the following sampling parameters to control the generation process:
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `max_tokens` | `int` | 512 | The maximum number of tokens to generate. |
+| `temperature` | `float` | 0.7 | Controls the randomness of the output. Lower values make the output more deterministic. |
+| `top_p` | `float` | 0.95 | The cumulative probability cutoff for nucleus sampling. |
+| `top_k` | `int` | 40 | The number of highest probability tokens to consider for sampling. |
+| `repeat_penalty` | `float` | 1.1 | Penalizes tokens that have recently appeared in the generated text. |
+| `stop` | `List[str]` | `["<|endoftext|>", "<|im_end|>"]` | A list of strings that will cause the generation to stop if they are produced. |
+| `seed` | `int` | `None` | A seed for the random number generator to ensure reproducibility. |
+| `min_p` | `float` | 0.05 | Sets a minimum probability for a token to be considered. |
+| `tfs_z` | `float` | 1.0 | Enables Tail Free Sampling. |
+| `typical_p` | `float` | 1.0 | Enables Typical Sampling. |
 
 ### Output Message Format
 

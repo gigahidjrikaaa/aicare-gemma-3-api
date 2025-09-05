@@ -1,11 +1,11 @@
-# app/main.py (Final GGUF Version for 12B Model)
 import os
 import logging
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
 from huggingface_hub import hf_hub_download
 from llama_cpp import Llama
+from typing import List, Optional
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -16,6 +16,14 @@ class GenerationRequest(BaseModel):
     prompt: str
     max_tokens: int = 512
     temperature: float = 0.7
+    top_p: float = 0.95
+    top_k: int = 40
+    repeat_penalty: float = 1.1
+    stop: Optional[List[str]] = Field(default_factory=lambda: ["<|endoftext|>", "<|im_end|>"])
+    seed: Optional[int] = None
+    min_p: float = 0.05
+    tfs_z: float = 1.0
+    typical_p: float = 1.0
 
 class GenerationResponse(BaseModel):
     generated_text: str
@@ -72,12 +80,8 @@ async def generate_text(request: GenerationRequest):
     try:
         logger.info(f"Generating text for prompt: '{request.prompt[:50]}...'")
 
-        output = llm(
-            request.prompt,
-            max_tokens=request.max_tokens,
-            temperature=request.temperature,
-            stop=["<|endoftext|>", "<|im_end|>"]
-        )
+        generation_params = request.dict(exclude_unset=True)
+        output = llm(**generation_params)
 
         result_text = output['choices'][0]['text']
         return GenerationResponse(generated_text=result_text)
@@ -94,13 +98,8 @@ async def generate_text_stream(request: GenerationRequest):
     try:
         logger.info(f"Generating text stream for prompt: '{request.prompt[:50]}...'")
 
-        output = llm(
-            request.prompt,
-            max_tokens=request.max_tokens,
-            temperature=request.temperature,
-            stop=["<|endoftext|>", "<|im_end|>"],
-            stream=True
-        )
+        generation_params = request.dict(exclude_unset=True)
+        output = llm(**generation_params, stream=True)
 
         result_text = ""
         for chunk in output:
@@ -126,13 +125,8 @@ async def generate_ws(websocket: WebSocket):
 
             logger.info(f"Generating text stream for prompt: '{request.prompt[:50]}...'")
 
-            output = llm(
-                request.prompt,
-                max_tokens=request.max_tokens,
-                temperature=request.temperature,
-                stop=["<|endoftext|>", "<|im_end|>"],
-                stream=True
-            )
+            generation_params = request.dict(exclude_unset=True)
+            output = llm(**generation_params, stream=True)
 
             for chunk in output:
                 token = chunk['choices'][0]['text']
