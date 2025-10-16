@@ -16,7 +16,29 @@ services:
     volumes:
       - ~/.cache/huggingface:/home/appuser/.cache/huggingface
     environment:
-      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN}
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_API_BASE=${OPENAI_API_BASE:-}
+      - OPENAI_TIMEOUT_SECONDS=${OPENAI_TIMEOUT_SECONDS:-60}
+      - OPENAI_WHISPER_MODEL=${OPENAI_WHISPER_MODEL:-gpt-4o-mini-transcribe}
+      - OPENAI_WHISPER_RESPONSE_FORMAT=${OPENAI_WHISPER_RESPONSE_FORMAT:-verbose_json}
+      - ENABLE_LOCAL_WHISPER=${ENABLE_LOCAL_WHISPER:-false}
+      - LOCAL_WHISPER_MODEL=${LOCAL_WHISPER_MODEL:-base}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - REQUEST_ID_HEADER=${REQUEST_ID_HEADER:-X-Request-ID}
+      - API_KEY_ENABLED=${API_KEY_ENABLED:-false}
+      - API_KEY_HEADER_NAME=${API_KEY_HEADER_NAME:-X-API-Key}
+      - API_KEYS=${API_KEYS:-}
+      - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED:-false}
+      - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-120}
+      - RATE_LIMIT_WINDOW_SECONDS=${RATE_LIMIT_WINDOW_SECONDS:-60}
+      - RATE_LIMIT_BURST_MULTIPLIER=${RATE_LIMIT_BURST_MULTIPLIER:-1.0}
+      - HIGGS_API_KEY=${HIGGS_API_KEY:-}
+      - HIGGS_API_BASE=${HIGGS_API_BASE:-http://higgs_audio:8000/v1}
+      - HIGGS_SPEECH_PATH=${HIGGS_SPEECH_PATH:-/audio/speech}
+      - HIGGS_MODEL_ID=${HIGGS_MODEL_ID:-higgs-audio-v2-generation-3B-base}
+      - HIGGS_DEFAULT_VOICE=${HIGGS_DEFAULT_VOICE:-en_woman}
+      - HIGGS_RESPONSE_FORMAT=${HIGGS_RESPONSE_FORMAT:-pcm}
     # Expose the port to the host machine for direct testing/access
     ports:
       - "6666:6666"

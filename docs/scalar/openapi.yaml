@@ -1,0 +1,791 @@
+openapi: 3.1.0
+info:
+  title: Gemma 3 Speech API
+  version: 1.0.0
+  description: |
+    Scalar reference for the Gemma 3 FastAPI deployment that combines text generation,
+    OpenAI Whisper transcription, and Higgs Audio speech synthesis. The specification
+    documents both REST and WebSocket surfaces, highlights authentication expectations,
+    and provides concrete request/response samples for QA.
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+  - url: https://api.example.com
+    description: Example production deployment
+tags:
+  - name: Health
+    description: Liveness and metrics endpoints.
+  - name: Generation
+    description: Text-only generation over REST and streaming/WebSocket channels.
+  - name: Speech
+    description: Whisper transcription, Higgs Audio synthesis, and dialogue orchestration APIs.
+  - name: WebSockets
+    description: Bidirectional streaming channels.
+security:
+  - ApiKeyAuth: []
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: |
+        Include a valid API key in requests when `API_KEY_ENABLED=true`. The header name can be
+        overridden via configuration, but `X-API-Key` is the default.
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+          description: Human readable error description.
+      required:
+        - detail
+    GenerationRequest:
+      type: object
+      properties:
+        prompt:
+          type: string
+          description: Prompt text passed to the Gemma 3 model.
+          example: "Summarise the following meeting transcript into three bullet points."
+        max_tokens:
+          type: integer
+          minimum: 1
+          maximum: 4096
+          default: 512
+          description: Maximum number of tokens to generate.
+          example: 256
+        temperature:
+          type: number
+          format: float
+          minimum: 0
+          default: 0.7
+          description: Softmax temperature applied during sampling.
+          example: 0.6
+        top_p:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          default: 0.95
+          description: Cumulative probability cutoff for nucleus sampling.
+          example: 0.9
+        top_k:
+          type: integer
+          minimum: 0
+          default: 40
+          description: Limit sampling to the top K tokens.
+          example: 50
+        repeat_penalty:
+          type: number
+          format: float
+          minimum: 0
+          default: 1.1
+          description: Penalty applied to discourage repetition.
+          example: 1.05
+        stop:
+          type: array
+          items:
+            type: string
+          description: Stop sequences forwarded to llama.cpp.
+          example:
+            - "</s>"
+            - "<|assistant|>"
+        seed:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Optional random seed for deterministic runs.
+          example: 1234
+        min_p:
+          type: number
+          format: float
+          minimum: 0
+          default: 0.05
+          description: Minimum probability cutoff for sampling.
+          example: 0.1
+        tfs_z:
+          type: number
+          format: float
+          minimum: 0
+          default: 1.0
+          description: Tail free sampling parameter.
+          example: 0.7
+        typical_p:
+          type: number
+          format: float
+          minimum: 0
+          default: 1.0
+          description: Typical sampling mass threshold.
+          example: 0.8
+      required:
+        - prompt
+    GenerationResponse:
+      type: object
+      properties:
+        generated_text:
+          type: string
+          description: Combined output text returned by the LLM.
+          example: "• Project velocity increased by 15%..."
+      required:
+        - generated_text
+    ModelInfo:
+      type: object
+      properties:
+        id:
+          type: string
+          example: google/gemma-3-12b-it-qat-q4_0-gguf
+        name:
+          type: string
+          example: Gemma 3 12B Q4_0 GGUF
+        description:
+          type: string
+          example: Google's Gemma 3 model, 12B parameters, quantized to 4-bit.
+      required:
+        - id
+        - name
+        - description
+    ModelListResponse:
+      type: object
+      properties:
+        models:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelInfo'
+      required:
+        - models
+    SpeechTranscriptionSegment:
+      type: object
+      properties:
+        id:
+          type: integer
+          nullable: true
+          description: Segment identifier supplied by Whisper.
+          example: 3
+        start:
+          type: number
+          format: float
+          nullable: true
+          description: Segment start timestamp in seconds.
+          example: 4.82
+        end:
+          type: number
+          format: float
+          nullable: true
+          description: Segment end timestamp in seconds.
+          example: 7.01
+        text:
+          type: string
+          description: Transcribed text for the segment.
+          example: "Thanks for joining today's stand-up."
+      required:
+        - text
+    SpeechTranscriptionResponse:
+      type: object
+      properties:
+        text:
+          type: string
+          description: Full transcript returned by Whisper.
+          example: "Thanks for joining today's stand-up."
+        language:
+          type: string
+          nullable: true
+          description: Detected or requested language code.
+          example: en
+        segments:
+          type: array
+          description: Optional list of timestamped transcript segments.
+          items:
+            $ref: '#/components/schemas/SpeechTranscriptionSegment'
+      required:
+        - text
+        - segments
+    SpeechSynthesisRequest:
+      type: object
+      properties:
+        text:
+          type: string
+          description: Plain text to synthesise (alias `input` is also accepted).
+          example: "Hello! This is your assistant speaking from Gemma 3."
+        voice:
+          type: string
+          nullable: true
+          description: Voice preset to use during synthesis.
+          example: en_woman
+        model:
+          type: string
+          nullable: true
+          description: Higgs Audio model identifier.
+          example: higgs-audio-v2-generation-3B-base
+        response_format:
+          type: string
+          nullable: true
+          description: Desired audio container/codec (pcm, wav, mp3, ogg, flac).
+          example: mp3
+        sample_rate:
+          type: integer
+          format: int32
+          nullable: true
+          description: Target sample rate in Hz.
+          example: 22050
+        speed:
+          type: number
+          format: float
+          nullable: true
+          description: Playback speed multiplier (> 0).
+          example: 1.05
+        style:
+          type: string
+          nullable: true
+          description: Optional style or emotion preset supported by the deployment.
+          example: cheerful
+        stream:
+          type: boolean
+          default: false
+          description: When true, return streaming audio chunks instead of base64 JSON.
+          example: true
+      required:
+        - text
+    SpeechSynthesisResponse:
+      type: object
+      properties:
+        audio_base64:
+          type: string
+          description: Base64 encoded audio payload.
+          example: UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YcQAA...
+        response_format:
+          type: string
+          description: Audio format returned by the TTS backend.
+          example: wav
+        media_type:
+          type: string
+          description: MIME type corresponding to the audio payload.
+          example: audio/wav
+        sample_rate:
+          type: integer
+          format: int32
+          description: Sample rate of the audio in Hz.
+          example: 16000
+        voice:
+          type: string
+          description: Voice preset used during synthesis.
+          example: en_woman
+        model:
+          type: string
+          description: Model identifier that produced the speech.
+          example: higgs-audio-v2-generation-3B-base
+      required:
+        - audio_base64
+        - response_format
+        - media_type
+        - sample_rate
+        - voice
+        - model
+    SpeechDialogueResponse:
+      type: object
+      properties:
+        transcript:
+          $ref: '#/components/schemas/SpeechTranscriptionResponse'
+        response_text:
+          type: string
+          description: Text response generated by the LLM.
+          example: "We can ship the new build after QA signs off tomorrow."
+        audio_base64:
+          type: string
+          description: Base64 encoded audio payload of the assistant reply.
+          example: UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YcQAA...
+        response_format:
+          type: string
+          description: Audio format returned by the synthesis backend.
+          example: wav
+        media_type:
+          type: string
+          description: MIME type corresponding to the audio payload.
+          example: audio/wav
+        sample_rate:
+          type: integer
+          format: int32
+          description: Sample rate of the audio in Hz.
+          example: 16000
+        voice:
+          type: string
+          description: Voice preset used during synthesis.
+          example: en_woman
+        model:
+          type: string
+          description: Model identifier that produced the speech.
+          example: higgs-audio-v2-generation-3B-base
+      required:
+        - transcript
+        - response_text
+        - audio_base64
+        - response_format
+        - media_type
+        - sample_rate
+        - voice
+        - model
+  responses:
+    Unauthorized:
+      description: Missing authentication header.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            detail: Missing API key
+    Forbidden:
+      description: Provided API key is invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            detail: Invalid API key
+    TooManyRequests:
+      description: Rate limit exceeded.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            detail: Rate limit exceeded
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Returns `status=ok` when the service is healthy.
+      responses:
+        '200':
+          description: Service is healthy.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                required:
+                  - status
+  /metrics:
+    get:
+      tags:
+        - Health
+      summary: Prometheus metrics
+      description: Exposes Prometheus/OpenMetrics counters, histograms, and gauges.
+      security: []
+      responses:
+        '200':
+          description: Text exposition format response.
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: |
+                  # HELP http_requests_total Total HTTP requests processed.
+                  # TYPE http_requests_total counter
+                  http_requests_total{method="GET",status="200"} 42
+  /v1/generate:
+    post:
+      tags:
+        - Generation
+      summary: Generate text
+      description: Produces a complete LLM response for the supplied prompt.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerationRequest'
+            examples:
+              default:
+                summary: Standard completion request
+                value:
+                  prompt: "Write a haiku about FastAPI based speech bots."
+                  max_tokens: 128
+                  temperature: 0.7
+      responses:
+        '200':
+          description: Successful generation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerationResponse'
+              example:
+                generated_text: "FastAPI whispers, / Higgs Audio answers back, / Gemma threads the words."
+        '400':
+          description: Validation error for invalid parameters.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /v1/generate_stream:
+    post:
+      tags:
+        - Generation
+      summary: Generate text as a stream
+      description: |
+        Streams newline-delimited JSON objects containing the progressively generated text. Each
+        chunk contains `{"generated_text": "..."}` with the cumulative output.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerationRequest'
+            examples:
+              streaming:
+                summary: Low-latency streaming request
+                value:
+                  prompt: "List three product ideas for a speech-first calendar assistant."
+                  temperature: 0.8
+      responses:
+        '200':
+          description: Streaming JSON response (chunked transfer encoded).
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+                description: Newline-delimited JSON payload.
+                example: |
+                  {"generated_text": "Idea 1: Voice-activated daily briefings"}
+                  {"generated_text": "Idea 1: Voice-activated daily briefings\nIdea 2: ..."}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /v1/generate_ws:
+    get:
+      tags:
+        - WebSockets
+        - Generation
+      summary: Text generation WebSocket
+      description: |
+        Establish a WebSocket connection to send generation requests and receive incremental
+        tokens. After authentication the client should send JSON payloads matching the
+        `GenerationRequest` schema. Each token is returned as `{"token": "..."}` and the stream
+        terminates with `{"status": "done"}`.
+      x-scalar-websocket: true
+      responses:
+        '101':
+          description: WebSocket upgrade.
+  /v1/models:
+    get:
+      tags:
+        - Generation
+      summary: List available models
+      responses:
+        '200':
+          description: Array of supported model descriptors.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelListResponse'
+              example:
+                models:
+                  - id: google/gemma-3-12b-it-qat-q4_0-gguf
+                    name: Gemma 3 12B Q4_0 GGUF
+                    description: Google's Gemma 3 model, 12B parameters, quantized to 4-bit.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /v1/models/{model_id}:
+    get:
+      tags:
+        - Generation
+      summary: Retrieve model metadata
+      parameters:
+        - in: path
+          name: model_id
+          required: true
+          schema:
+            type: string
+          example: google/gemma-3-12b-it-qat-q4_0-gguf
+      responses:
+        '200':
+          description: Model details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Model not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: Model not found.
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /v1/speech-to-text:
+    post:
+      tags:
+        - Speech
+      summary: Transcribe audio with Whisper
+      description: Upload an audio file and receive a Whisper transcription.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Audio file to transcribe.
+                language:
+                  type: string
+                  nullable: true
+                  description: Optional ISO language code hint.
+                  example: en
+                prompt:
+                  type: string
+                  nullable: true
+                  description: Optional priming prompt to bias transcription.
+                  example: "Product kickoff call with Jane and Omar."
+                response_format:
+                  type: string
+                  nullable: true
+                  description: Override Whisper response format (json, verbose_json, srt, etc.).
+                  example: verbose_json
+                temperature:
+                  type: number
+                  format: float
+                  nullable: true
+                  description: Sampling temperature forwarded to Whisper.
+                  example: 0.2
+            encoding:
+              file:
+                contentType: audio/wav, audio/mpeg, audio/ogg, audio/webm
+      responses:
+        '200':
+          description: Successful transcription.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpeechTranscriptionResponse'
+        '400':
+          description: Bad request (e.g. empty file).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          description: Whisper service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: Whisper service is unavailable
+  /v1/text-to-speech:
+    post:
+      tags:
+        - Speech
+      summary: Synthesize speech with Higgs Audio
+      description: Generate speech audio from text using the Higgs Audio V2 deployment.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SpeechSynthesisRequest'
+            examples:
+              base64Response:
+                summary: Return base64 encoded audio
+                value:
+                  text: "Your status meeting starts in five minutes."
+                  voice: en_woman
+                  response_format: wav
+                  stream: false
+              streamingResponse:
+                summary: Stream PCM frames over HTTP
+                value:
+                  text: "Streaming example for Higgs Audio."
+                  response_format: pcm
+                  sample_rate: 16000
+                  stream: true
+      responses:
+        '200':
+          description: Base64 payload or streaming audio depending on the `stream` flag.
+          headers:
+            x-audio-format:
+              schema:
+                type: string
+              description: Audio format of the streaming payload (set when streaming).
+            x-sample-rate:
+              schema:
+                type: string
+              description: Sample rate in Hz (set when streaming).
+            x-voice:
+              schema:
+                type: string
+              description: Voice preset used (set when streaming).
+            x-model:
+              schema:
+                type: string
+              description: Model identifier used (set when streaming).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpeechSynthesisResponse'
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+              examples:
+                streaming:
+                  summary: Raw PCM frames streamed in chunks
+                  value: (binary stream)
+        '400':
+          description: Invalid synthesis parameters.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          description: Higgs Audio service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                detail: Higgs Audio service is unavailable
+  /v1/dialogue:
+    post:
+      tags:
+        - Speech
+      summary: Run end-to-end dialogue pipeline
+      description: |
+        Upload a user utterance, obtain the Whisper transcript, Gemma LLM response text, and
+        synthesized Higgs Audio reply. Optionally stream newline-delimited JSON events by setting
+        `stream_audio=true`.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Audio file containing the user utterance.
+                instructions:
+                  type: string
+                  nullable: true
+                  description: High-level guidance for the assistant.
+                  example: "Respond as a helpful meeting facilitator."
+                generation_config:
+                  type: string
+                  nullable: true
+                  description: JSON overrides for Gemma generation parameters (prompt ignored).
+                  example: '{"temperature": 0.6, "max_tokens": 256}'
+                synthesis_config:
+                  type: string
+                  nullable: true
+                  description: JSON overrides for speech synthesis (text & stream ignored).
+                  example: '{"voice": "en_woman", "response_format": "mp3"}'
+                stream_audio:
+                  type: boolean
+                  default: false
+                  description: When true, return streaming JSON events containing audio chunks.
+                  example: true
+            encoding:
+              file:
+                contentType: audio/wav, audio/mpeg, audio/ogg, audio/webm
+      responses:
+        '200':
+          description: Aggregated transcript, text, and base64 audio response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpeechDialogueResponse'
+            application/x-ndjson:
+              schema:
+                type: string
+                description: Streamed newline-delimited events when `stream_audio=true`.
+                example: |
+                  {"event":"metadata","data":{"response_format":"pcm","sample_rate":16000}}
+                  {"event":"transcript","data":{"text":"hello there"}}
+                  {"event":"assistant_text","data":{"text":"Hi!"}}
+                  {"event":"audio_chunk","data":{"audio_base64":"UklGR..."}}
+                  {"event":"done"}
+        '400':
+          description: Invalid payload supplied.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          description: Speech services unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/speech-to-text/ws:
+    get:
+      tags:
+        - WebSockets
+        - Speech
+      summary: Whisper transcription WebSocket
+      description: |
+        Establish a WebSocket connection and stream base64 encoded audio clips. Each message
+        should contain `{ "audio_base64": "..." }` plus optional fields like `filename` and
+        `language`. The server responds with transcript payloads using
+        `{ "event": "transcript", "data": { ... } }`.
+      x-scalar-websocket: true
+      responses:
+        '101':
+          description: WebSocket upgrade.
+  /v1/text-to-speech/ws:
+    get:
+      tags:
+        - WebSockets
+        - Speech
+      summary: Higgs Audio synthesis WebSocket
+      description: |
+        Establish a WebSocket connection to request speech synthesis. Send JSON payloads matching
+        `SpeechSynthesisRequest`. When `stream=true`, metadata and base64 encoded audio chunks are
+        emitted via `audio_chunk` events; otherwise a single `synthesis` payload is returned.
+      x-scalar-websocket: true
+      responses:
+        '101':
+          description: WebSocket upgrade.

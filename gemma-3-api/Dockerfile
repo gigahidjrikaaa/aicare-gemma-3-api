@@ -6,7 +6,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Install Python and build essentials
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    python3.11 python3-pip python3.11-venv git cmake ninja-build && \
+    python3.11 python3-pip python3.11-venv git cmake ninja-build \
+    ffmpeg libsndfile1 && \
     rm -rf /var/lib/apt/lists/*
 
 # Create and activate a virtual environment
@@ -33,6 +34,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
+
+# Install runtime audio dependencies and curl for health checks
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    ffmpeg libsndfile1 curl && \
+    rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user for security
 ARG UID=1000
