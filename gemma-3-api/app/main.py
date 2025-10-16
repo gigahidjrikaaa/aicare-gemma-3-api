@@ -1,167 +1,91 @@
-import os
-import logging
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, Field
-from contextlib import asynccontextmanager
-from huggingface_hub import hf_hub_download
-from llama_cpp import Llama
-from typing import List, Optional
+"""FastAPI application entrypoint."""
 
-logging.basicConfig(level=logging.INFO)
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from app.api.router import api_router
+from app.config.settings import Settings, get_settings
+from app.observability import (
+    RequestContextMiddleware,
+    configure_logging,
+    register_metrics_endpoint,
+)
+from app.security import RateLimiter
+from app.services.conversation import ConversationService
+from app.services.higgs import HiggsAudioService
+from app.services.llm import LLMService
+from app.services.whisper import WhisperService
+
 logger = logging.getLogger(__name__)
 
-ml_models = {}
-
-class GenerationRequest(BaseModel):
-    prompt: str
-    max_tokens: int = 512
-    temperature: float = 0.7
-    top_p: float = 0.95
-    top_k: int = 40
-    repeat_penalty: float = 1.1
-    stop: Optional[List[str]] = Field(default_factory=lambda: ["<|endoftext|>", "<|im_end|>"])
-    seed: Optional[int] = None
-    min_p: float = 0.05
-    tfs_z: float = 1.0
-    typical_p: float = 1.0
-
-class GenerationResponse(BaseModel):
-    generated_text: str
-
-def load_model():
-    """Downloads the 12B GGUF model and loads it into llama.cpp."""
-    # Pointing to the 12B version of the GGUF model
-    model_repo_id = "google/gemma-3-12b-it-qat-q4_0-gguf"
-    model_filename = "gemma-3-12b-it-q4_0.gguf" # A ~7.5GB 4-bit quantization
-
-    logger.info(f"Downloading model '{model_filename}' from repo '{model_repo_id}'...")
-
-    model_path = hf_hub_download(
-        repo_id=model_repo_id,
-        filename=model_filename,
-        token=os.getenv("HUGGING_FACE_HUB_TOKEN")
-    )
-
-    logger.info(f"Model downloaded to: {model_path}")
-    logger.info("Loading model into GPU...")
-
-    llm = Llama(
-        model_path=model_path,
-        n_gpu_layers=-1,  # Use all available GPU layers
-        n_batch=2048,      # Batch size for processing
-        n_threads=10,       # Number of threads for processing
-        n_ctx=32768,      # Context size
-        verbose=True
-    )
-
-    logger.info("Model loaded successfully.")
-    return llm
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Application startup...")
-    ml_models["llm"] = load_model()
-    yield
-    logger.info("Application shutdown...")
-    ml_models.clear()
 
-app = FastAPI(lifespan=lifespan)
+    settings = get_settings()
+    llm_service = LLMService(settings=settings)
+    llm_service.startup()
+    app.state.llm_service = llm_service
 
-@app.get("/health")
-async def health_check():
-    return {"status": "ok"}
+    whisper_service = WhisperService(settings=settings)
+    await whisper_service.startup()
+    app.state.whisper_service = whisper_service
 
-@app.post("/v1/generate", response_model=GenerationResponse)
-async def generate_text(request: GenerationRequest):
-    llm = ml_models.get("llm")
-    if not llm:
-        raise HTTPException(status_code=503, detail="Model is not available")
+    higgs_service = HiggsAudioService(settings=settings)
+    await higgs_service.startup()
+    app.state.higgs_service = higgs_service
 
-    try:
-        logger.info(f"Generating text for prompt: '{request.prompt[:50]}...'")
+    rate_limiter = RateLimiter(settings=settings)
+    app.state.rate_limiter = rate_limiter
 
-        generation_params = request.dict(exclude_unset=True)
-        output = llm(**generation_params)
-
-        result_text = output['choices'][0]['text']
-        return GenerationResponse(generated_text=result_text)
-    except Exception as e:
-        logger.error(f"Error during text generation: {e}")
-        raise HTTPException(status_code=500, detail="Failed to generate text.")
-
-@app.post("/v1/generate_stream", response_model=GenerationResponse)
-async def generate_text_stream(request: GenerationRequest):
-    llm = ml_models.get("llm")
-    if not llm:
-        raise HTTPException(status_code=503, detail="Model is not available")
+    conversation_service = ConversationService(
+        llm_service=llm_service,
+        whisper_service=whisper_service,
+        higgs_service=higgs_service,
+    )
+    app.state.conversation_service = conversation_service
 
     try:
-        logger.info(f"Generating text stream for prompt: '{request.prompt[:50]}...'")
-
-        generation_params = request.dict(exclude_unset=True)
-        output = llm(**generation_params, stream=True)
-
-        result_text = ""
-        for chunk in output:
-            result_text += chunk['choices'][0]['text']
-            yield GenerationResponse(generated_text=result_text)
-
-    except Exception as e:
-        logger.error(f"Error during text generation stream: {e}")
-        raise HTTPException(status_code=500, detail="Failed to generate text stream.")
-
-@app.websocket("/v1/generate_ws")
-async def generate_ws(websocket: WebSocket):
-    await websocket.accept()
-    llm = ml_models.get("llm")
-    if not llm:
-        await websocket.close(code=1011, reason="Model is not available")
-        return
-
-    try:
-        while True:
-            data = await websocket.receive_json()
-            request = GenerationRequest(**data)
-
-            logger.info(f"Generating text stream for prompt: '{request.prompt[:50]}...'")
-
-            generation_params = request.dict(exclude_unset=True)
-            output = llm(**generation_params, stream=True)
-
-            for chunk in output:
-                token = chunk['choices'][0]['text']
-                await websocket.send_json({"token": token})
-
-            await websocket.send_json({"status": "done"})
-
-    except WebSocketDisconnect:
-        logger.info("Client disconnected from WebSocket.")
-    except Exception as e:
-        logger.error(f"Error in WebSocket: {e}")
-        await websocket.close(code=1011, reason="An internal error occurred.")
+        yield
+    finally:
+        logger.info("Application shutdown...")
+        if hasattr(app.state, "conversation_service") and app.state.conversation_service is not None:
+            app.state.conversation_service = None
+        if hasattr(app.state, "higgs_service") and app.state.higgs_service is not None:
+            await app.state.higgs_service.shutdown()
+            app.state.higgs_service = None
+        if hasattr(app.state, "whisper_service") and app.state.whisper_service is not None:
+            await app.state.whisper_service.shutdown()
+            app.state.whisper_service = None
+        if hasattr(app.state, "rate_limiter") and app.state.rate_limiter is not None:
+            app.state.rate_limiter = None
+        llm_service.shutdown()
+        app.state.llm_service = None
 
 
-# List models endpoint
-@app.get("/v1/models", response_model=dict)
-async def list_models():
-    return {
-        "models": [
-            {
-                "id": "google/gemma-3-12b-it-qat-q4_0-gguf",
-                "name": "Gemma 3 12B Q4_0 GGUF",
-                "description": "Google's Gemma 3 model, 12B parameters, quantized to 4-bit."
-            }
-        ]
-    }
-@app.get("/v1/models/{model_id}", response_model=dict)
-async def get_model_info(model_id: str):
-    if model_id == "google/gemma-3-12b-it-qat-q4_0-gguf":
-        return {
-            "id": model_id,
-            "name": "Gemma 3 12B Q4_0 GGUF",
-            "description": "Google's Gemma 3 model, 12B parameters, quantized to 4-bit."
-        }
-    else:
-        raise HTTPException(status_code=404, detail="Model not found.")
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or get_settings()
 
-    
+    configure_logging(settings)
+
+    application = FastAPI(
+        title=settings.api_title,
+        version=settings.api_version,
+        lifespan=lifespan,
+    )
+    application.add_middleware(RequestContextMiddleware, settings=settings)
+    application.include_router(api_router)
+    register_metrics_endpoint(application)
+
+    @application.get("/health")
+    async def health_check() -> dict[str, str]:
+        return {"status": "ok"}
+
+    return application
+
+
+app = create_app()
+
