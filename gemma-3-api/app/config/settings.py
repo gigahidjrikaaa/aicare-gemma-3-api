@@ -132,45 +132,45 @@ class Settings(BaseSettings):
         alias="OPENAI_WHISPER_RESPONSE_FORMAT",
         description="Preferred transcription response format returned by Whisper.",
     )
-    higgs_api_key: Optional[str] = Field(
+    openaudio_api_key: Optional[str] = Field(
         default=None,
-        alias="HIGGS_API_KEY",
-        description="Authentication token for the planned Higgs Audio V2 service.",
+        alias="OPENAUDIO_API_KEY",
+        description="Authentication token forwarded to the OpenAudio-S1-mini API.",
     )
-    higgs_api_base: str = Field(
-        default="http://localhost:8000/v1",
-        alias="HIGGS_API_BASE",
-        description="Base URL for the Higgs Audio V2 OpenAI-compatible deployment.",
+    openaudio_api_base: str = Field(
+        default="http://localhost:8080",
+        alias="OPENAUDIO_API_BASE",
+        description="Base URL for the OpenAudio-S1-mini inference server.",
     )
-    higgs_speech_path: str = Field(
-        default="/audio/speech",
-        alias="HIGGS_SPEECH_PATH",
-        description="Path component for the Higgs Audio speech synthesis endpoint.",
+    openaudio_tts_path: str = Field(
+        default="/v1/tts",
+        alias="OPENAUDIO_TTS_PATH",
+        description="Path component for the OpenAudio-S1-mini synthesis endpoint.",
     )
-    higgs_model_id: str = Field(
-        default="higgs-audio-v2-generation-3B-base",
-        alias="HIGGS_MODEL_ID",
-        description="Identifier of the default Higgs Audio model to request when none is provided.",
+    openaudio_default_format: str = Field(
+        default="wav",
+        alias="OPENAUDIO_DEFAULT_FORMAT",
+        description="Audio container/codec requested from OpenAudio by default.",
     )
-    higgs_default_voice: str = Field(
-        default="en_woman",
-        alias="HIGGS_DEFAULT_VOICE",
-        description="Fallback voice preset forwarded to the Higgs Audio API.",
+    openaudio_default_reference_id: Optional[str] = Field(
+        default=None,
+        alias="OPENAUDIO_DEFAULT_REFERENCE_ID",
+        description="Reference voice identifier forwarded to OpenAudio when supplied.",
     )
-    higgs_response_format: str = Field(
-        default="pcm",
-        alias="HIGGS_RESPONSE_FORMAT",
-        description="Audio container/codec requested from Higgs Audio by default.",
+    openaudio_default_normalize: bool = Field(
+        default=True,
+        alias="OPENAUDIO_DEFAULT_NORMALIZE",
+        description="Whether to request loudness normalisation from OpenAudio by default.",
     )
-    higgs_timeout_seconds: PositiveFloat = Field(
+    openaudio_timeout_seconds: PositiveFloat = Field(
         default=120.0,
-        alias="HIGGS_TIMEOUT_SECONDS",
-        description="Network timeout applied to Higgs Audio synthesis requests.",
+        alias="OPENAUDIO_TIMEOUT_SECONDS",
+        description="Network timeout applied to OpenAudio synthesis requests.",
     )
-    higgs_max_retries: PositiveInt = Field(
+    openaudio_max_retries: PositiveInt = Field(
         default=3,
-        alias="HIGGS_MAX_RETRIES",
-        description="Number of retry attempts for recoverable Higgs Audio errors.",
+        alias="OPENAUDIO_MAX_RETRIES",
+        description="Number of retry attempts for recoverable OpenAudio errors.",
     )
     default_audio_sample_rate: PositiveInt = Field(
         default=16000,

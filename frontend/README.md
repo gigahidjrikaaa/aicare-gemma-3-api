@@ -1,6 +1,6 @@
 # AICare Speech Playground Frontend
 
-A lightweight Vite + React dashboard for exercising the Gemma 3 text generation, Whisper speech-to-text, Higgs Audio text-to-speech, and dialogue orchestration APIs.
+A lightweight Vite + React dashboard for exercising the Gemma 3 text generation, Whisper speech-to-text, OpenAudio text-to-speech, and dialogue orchestration APIs.
 
 ## Prerequisites
 - Node.js 18+
@@ -37,7 +37,7 @@ The settings drawer within the UI lets you override the API base URL and API key
 ## Feature overview
 - **Text generation**: Invoke `/v1/generate` and `/v1/generate_stream` with detailed sampling controls and live event logs.
 - **Speech-to-text**: Upload audio files, configure Whisper parameters, and view transcript segments with timestamps.
-- **Text-to-speech**: Render Higgs Audio responses in blocking and streaming modes with in-browser playback.
+- **Text-to-speech**: Render OpenAudio responses in blocking and streaming modes with in-browser playback.
 - **Dialogue orchestration**: Chain user audio through STT → LLM → TTS, inspecting incremental events and final outputs.
 - **Diagnostics**: Global toast notifications, request IDs (when available), and error reporting for quick triage.
 

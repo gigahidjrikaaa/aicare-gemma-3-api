@@ -4,7 +4,7 @@ info:
   version: 1.0.0
   description: |
     Scalar reference for the Gemma 3 FastAPI deployment that combines text generation,
-    OpenAI Whisper transcription, and Higgs Audio speech synthesis. The specification
+    OpenAI Whisper transcription, and OpenAudio speech synthesis. The specification
     documents both REST and WebSocket surfaces, highlights authentication expectations,
     and provides concrete request/response samples for QA.
 servers:
@@ -18,7 +18,7 @@ tags:
   - name: Generation
     description: Text-only generation over REST and streaming/WebSocket channels.
   - name: Speech
-    description: Whisper transcription, Higgs Audio synthesis, and dialogue orchestration APIs.
+    description: Whisper transcription, OpenAudio synthesis, and dialogue orchestration APIs.
   - name: WebSockets
     description: Bidirectional streaming channels.
 security:
@@ -207,38 +207,39 @@ components:
           type: string
           description: Plain text to synthesise (alias `input` is also accepted).
           example: "Hello! This is your assistant speaking from Gemma 3."
-        voice:
+        format:
           type: string
           nullable: true
-          description: Voice preset to use during synthesis.
-          example: en_woman
-        model:
-          type: string
-          nullable: true
-          description: Higgs Audio model identifier.
-          example: higgs-audio-v2-generation-3B-base
-        response_format:
-          type: string
-          nullable: true
-          description: Desired audio container/codec (pcm, wav, mp3, ogg, flac).
-          example: mp3
+          description: Desired audio container/codec (wav, mp3, ogg, flac).
+          example: wav
         sample_rate:
           type: integer
           format: int32
           nullable: true
           description: Target sample rate in Hz.
           example: 22050
-        speed:
+        reference_id:
+          type: string
+          nullable: true
+          description: Reference speaker identifier exposed by OpenAudio.
+          example: default
+        normalize:
+          type: boolean
+          nullable: true
+          description: Whether to request loudness normalisation.
+        references:
+          type: array
+          nullable: true
+          description: Optional list of base64-encoded reference audio samples.
+          items:
+            type: string
+        top_p:
           type: number
           format: float
           nullable: true
-          description: Playback speed multiplier (> 0).
-          example: 1.05
-        style:
-          type: string
-          nullable: true
-          description: Optional style or emotion preset supported by the deployment.
-          example: cheerful
+          minimum: 0
+          maximum: 1
+          description: Sampling nucleus value forwarded to OpenAudio.
         stream:
           type: boolean
           default: false
@@ -266,21 +267,15 @@ components:
           format: int32
           description: Sample rate of the audio in Hz.
           example: 16000
-        voice:
+        reference_id:
           type: string
-          description: Voice preset used during synthesis.
-          example: en_woman
-        model:
-          type: string
-          description: Model identifier that produced the speech.
-          example: higgs-audio-v2-generation-3B-base
+          nullable: true
+          description: Reference identifier used during synthesis, when available.
       required:
         - audio_base64
         - response_format
         - media_type
         - sample_rate
-        - voice
-        - model
     SpeechDialogueResponse:
       type: object
       properties:
@@ -307,14 +302,10 @@ components:
           format: int32
           description: Sample rate of the audio in Hz.
           example: 16000
-        voice:
+        reference_id:
           type: string
-          description: Voice preset used during synthesis.
-          example: en_woman
-        model:
-          type: string
-          description: Model identifier that produced the speech.
-          example: higgs-audio-v2-generation-3B-base
+          nullable: true
+          description: Reference identifier used during synthesis, when available.
       required:
         - transcript
         - response_text
@@ -322,8 +313,6 @@ components:
         - response_format
         - media_type
         - sample_rate
-        - voice
-        - model
   responses:
     Unauthorized:
       description: Missing authentication header.
@@ -414,7 +403,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/GenerationResponse'
               example:
-                generated_text: "FastAPI whispers, / Higgs Audio answers back, / Gemma threads the words."
+                generated_text: "FastAPI whispers, / OpenAudio answers back, / Gemma threads the words."
         '400':
           description: Validation error for invalid parameters.
           content:
@@ -607,8 +596,8 @@ paths:
     post:
       tags:
         - Speech
-      summary: Synthesize speech with Higgs Audio
-      description: Generate speech audio from text using the Higgs Audio V2 deployment.
+      summary: Synthesize speech with OpenAudio
+      description: Generate speech audio from text using the OpenAudio-S1-mini deployment.
       requestBody:
         required: true
         content:
@@ -620,15 +609,15 @@ paths:
                 summary: Return base64 encoded audio
                 value:
                   text: "Your status meeting starts in five minutes."
-                  voice: en_woman
-                  response_format: wav
+                  format: wav
+                  reference_id: default
                   stream: false
               streamingResponse:
-                summary: Stream PCM frames over HTTP
+                summary: Stream WAV frames over HTTP
                 value:
-                  text: "Streaming example for Higgs Audio."
-                  response_format: pcm
-                  sample_rate: 16000
+                  text: "Streaming example for OpenAudio."
+                  format: wav
+                  sample_rate: 44100
                   stream: true
       responses:
         '200':
@@ -642,14 +631,10 @@ paths:
               schema:
                 type: string
               description: Sample rate in Hz (set when streaming).
-            x-voice:
+            x-reference-id:
               schema:
                 type: string
-              description: Voice preset used (set when streaming).
-            x-model:
-              schema:
-                type: string
-              description: Model identifier used (set when streaming).
+              description: Reference identifier used (set when streaming).
           content:
             application/json:
               schema:
@@ -675,13 +660,13 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
         '503':
-          description: Higgs Audio service unavailable.
+          description: OpenAudio service unavailable.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
-                detail: Higgs Audio service is unavailable
+                detail: OpenAudio service is unavailable
   /v1/dialogue:
     post:
       tags:
@@ -689,7 +674,7 @@ paths:
       summary: Run end-to-end dialogue pipeline
       description: |
         Upload a user utterance, obtain the Whisper transcript, Gemma LLM response text, and
-        synthesized Higgs Audio reply. Optionally stream newline-delimited JSON events by setting
+        synthesized OpenAudio reply. Optionally stream newline-delimited JSON events by setting
         `stream_audio=true`.
       requestBody:
         required: true
@@ -716,7 +701,7 @@ paths:
                   type: string
                   nullable: true
                   description: JSON overrides for speech synthesis (text & stream ignored).
-                  example: '{"voice": "en_woman", "response_format": "mp3"}'
+                  example: '{"format": "wav", "reference_id": "default"}'
                 stream_audio:
                   type: boolean
                   default: false
@@ -780,11 +765,12 @@ paths:
       tags:
         - WebSockets
         - Speech
-      summary: Higgs Audio synthesis WebSocket
+      summary: OpenAudio synthesis WebSocket
       description: |
         Establish a WebSocket connection to request speech synthesis. Send JSON payloads matching
-        `SpeechSynthesisRequest`. When `stream=true`, metadata and base64 encoded audio chunks are
-        emitted via `audio_chunk` events; otherwise a single `synthesis` payload is returned.
+        `SpeechSynthesisRequest`. When `stream=true`, metadata (including optional `reference_id`) and
+        base64 encoded audio chunks are emitted via `audio_chunk` events; otherwise a single
+        `synthesis` payload is returned.
       x-scalar-websocket: true
       responses:
         '101':

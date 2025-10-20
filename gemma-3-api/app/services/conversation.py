@@ -8,7 +8,11 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from app.schemas.generation import GenerationRequest
-from app.services.higgs import HiggsAudioService, HiggsSynthesisResult, HiggsSynthesisStream
+from app.services.openaudio import (
+    OpenAudioService,
+    OpenAudioSynthesisResult,
+    OpenAudioSynthesisStream,
+)
 from app.services.llm import LLMService
 from app.services.whisper import WhisperService, WhisperTranscription
 from app.observability.metrics import record_external_call, record_pipeline
@@ -20,7 +24,7 @@ class DialogueResult:
 
     transcription: WhisperTranscription
     response_text: str
-    synthesis: HiggsSynthesisResult
+    synthesis: OpenAudioSynthesisResult
 
 
 @dataclass(slots=True)
@@ -29,22 +33,22 @@ class DialogueStreamResult:
 
     transcription: WhisperTranscription
     response_text: str
-    synthesis_stream: HiggsSynthesisStream
+    synthesis_stream: OpenAudioSynthesisStream
 
 
 class ConversationService:
-    """High level helper that links Whisper, Gemma and Higgs Audio."""
+    """High level helper that links Whisper, Gemma and OpenAudio."""
 
     def __init__(
         self,
         *,
         llm_service: LLMService,
         whisper_service: WhisperService,
-        higgs_service: HiggsAudioService,
+        openaudio_service: OpenAudioService,
     ) -> None:
         self._llm_service = llm_service
         self._whisper_service = whisper_service
-        self._higgs_service = higgs_service
+        self._openaudio_service = openaudio_service
 
     async def run_dialogue(
         self,
@@ -87,7 +91,7 @@ class ConversationService:
             synthesis_kwargs = self._prepare_synthesis_kwargs(synthesis_overrides or {})
 
             if stream_audio:
-                synthesis_stream = await self._higgs_service.synthesize_stream(
+                synthesis_stream = await self._openaudio_service.synthesize_stream(
                     text=response_text,
                     **synthesis_kwargs,
                 )
@@ -98,7 +102,7 @@ class ConversationService:
                     synthesis_stream=synthesis_stream,
                 )
 
-            synthesis_result = await self._higgs_service.synthesize(
+            synthesis_result = await self._openaudio_service.synthesize(
                 text=response_text,
                 **synthesis_kwargs,
             )

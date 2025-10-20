@@ -2,8 +2,12 @@ from typing import Any, AsyncIterator, Dict, List
 
 import pytest
 
+from typing import Any, AsyncIterator, Dict, List
+
+import pytest
+
 from app.config.settings import Settings
-from app.services.higgs import HiggsAudioService
+from app.services.openaudio import OpenAudioService
 
 
 class _DummyStreamResponse:
@@ -28,7 +32,7 @@ class _FakeAsyncClient:
     def __init__(self) -> None:
         self.calls: List[Dict[str, Any]] = []
 
-    async def stream(self, method: str, path: str, *, json: Dict[str, Any], headers: Dict[str, str]):
+    def stream(self, method: str, path: str, *, json: Dict[str, Any], headers: Dict[str, str]):
         self.calls.append({"method": method, "path": path, "json": json, "headers": headers})
         return _DummyStreamResponse(chunks=[b"chunk-1", b"chunk-2"])
 
@@ -36,11 +40,11 @@ class _FakeAsyncClient:
 @pytest.mark.asyncio
 async def test_synthesize_stream_sets_stream_flag() -> None:
     settings = Settings(
-        higgs_api_base="http://localhost:8000/v1",
-        higgs_speech_path="/audio/speech",
-        higgs_max_retries=1,
+        openaudio_api_base="http://localhost:8080",
+        openaudio_tts_path="/v1/tts",
+        openaudio_max_retries=1,
     )
-    service = HiggsAudioService(settings=settings)
+    service = OpenAudioService(settings=settings)
 
     # Inject a fake client to avoid real network calls.
     fake_client = _FakeAsyncClient()
@@ -55,5 +59,5 @@ async def test_synthesize_stream_sets_stream_flag() -> None:
     assert collected == [b"chunk-1", b"chunk-2"]
     assert fake_client.calls  # ensure at least one request was made
     request_payload = fake_client.calls[0]["json"]
-    assert request_payload.get("stream") is True
+    assert request_payload.get("streaming") is True
 

@@ -28,7 +28,7 @@ from app.schemas.speech import (
     SpeechTranscriptionSegment,
 )
 from app.services.conversation import ConversationService, DialogueStreamResult
-from app.services.higgs import HiggsAudioService
+from app.services.openaudio import OpenAudioService
 from app.services.whisper import WhisperService, WhisperTranscription
 from app.security import (
     enforce_rate_limit,
@@ -85,10 +85,10 @@ def _get_whisper_service(request: Request) -> WhisperService:
     return service
 
 
-def _get_higgs_service(request: Request) -> HiggsAudioService:
-    service: HiggsAudioService | None = getattr(request.app.state, "higgs_service", None)
+def _get_openaudio_service(request: Request) -> OpenAudioService:
+    service: OpenAudioService | None = getattr(request.app.state, "openaudio_service", None)
     if service is None or not service.is_ready:
-        raise HTTPException(status_code=503, detail="Higgs Audio service is unavailable")
+        raise HTTPException(status_code=503, detail="OpenAudio service is unavailable")
     return service
 
 
@@ -150,7 +150,7 @@ async def speech_to_text(
 @router.post(
     "/text-to-speech",
     response_model=SpeechSynthesisResponse,
-    summary="Synthesize speech with Higgs Audio",
+    summary="Synthesize speech with OpenAudio",
     responses={
         200: {"description": "Base64 encoded audio response."},
         206: {"description": "Streaming audio response."},
@@ -158,19 +158,19 @@ async def speech_to_text(
 )
 async def text_to_speech(
     payload: SpeechSynthesisRequest,
-    higgs_service: HiggsAudioService = Depends(_get_higgs_service),
+    openaudio_service: OpenAudioService = Depends(_get_openaudio_service),
 ):
     """Generate speech audio from text."""
 
     if payload.stream:
-        stream_result = await higgs_service.synthesize_stream(
+        stream_result = await openaudio_service.synthesize_stream(
             text=payload.text,
-            voice=payload.voice,
-            model=payload.model,
-            response_format=payload.response_format,
+            response_format=payload.format,
             sample_rate=payload.sample_rate,
-            speed=payload.speed,
-            style=payload.style,
+            reference_id=payload.reference_id,
+            normalize=payload.normalize,
+            references=payload.references,
+            top_p=payload.top_p,
         )
 
         async def iterator() -> AsyncIterator[bytes]:
@@ -180,19 +180,19 @@ async def text_to_speech(
         headers = {
             "x-audio-format": stream_result.response_format,
             "x-sample-rate": str(stream_result.sample_rate),
-            "x-voice": stream_result.voice,
-            "x-model": stream_result.model,
         }
+        if stream_result.reference_id:
+            headers["x-reference-id"] = stream_result.reference_id
         return StreamingResponse(iterator(), media_type=stream_result.media_type, headers=headers)
 
-    synthesis = await higgs_service.synthesize(
+    synthesis = await openaudio_service.synthesize(
         text=payload.text,
-        voice=payload.voice,
-        model=payload.model,
-        response_format=payload.response_format,
+        response_format=payload.format,
         sample_rate=payload.sample_rate,
-        speed=payload.speed,
-        style=payload.style,
+        reference_id=payload.reference_id,
+        normalize=payload.normalize,
+        references=payload.references,
+        top_p=payload.top_p,
     )
 
     return SpeechSynthesisResponse(
@@ -200,8 +200,7 @@ async def text_to_speech(
         response_format=synthesis.response_format,
         media_type=synthesis.media_type,
         sample_rate=synthesis.sample_rate,
-        voice=synthesis.voice,
-        model=synthesis.model,
+        reference_id=synthesis.reference_id,
     )
 
 
@@ -267,9 +266,9 @@ async def dialogue(
                 "response_format": result.synthesis_stream.response_format,
                 "media_type": result.synthesis_stream.media_type,
                 "sample_rate": result.synthesis_stream.sample_rate,
-                "voice": result.synthesis_stream.voice,
-                "model": result.synthesis_stream.model,
             }
+            if result.synthesis_stream.reference_id is not None:
+                metadata["reference_id"] = result.synthesis_stream.reference_id
             yield json.dumps({"event": "metadata", "data": metadata}) + "\n"
             yield json.dumps({"event": "transcript", "data": transcript_model.model_dump()}) + "\n"
             yield json.dumps(
@@ -292,8 +291,7 @@ async def dialogue(
         response_format=synthesis.response_format,
         media_type=synthesis.media_type,
         sample_rate=synthesis.sample_rate,
-        voice=synthesis.voice,
-        model=synthesis.model,
+        reference_id=synthesis.reference_id,
     )
 
 
@@ -358,9 +356,11 @@ async def text_to_speech_ws(websocket: WebSocket) -> None:
         return
     await websocket.accept()
 
-    higgs_service: HiggsAudioService | None = getattr(websocket.app.state, "higgs_service", None)
-    if higgs_service is None or not higgs_service.is_ready:
-        await websocket.close(code=1013, reason="Higgs Audio service is unavailable")
+    openaudio_service: OpenAudioService | None = getattr(
+        websocket.app.state, "openaudio_service", None
+    )
+    if openaudio_service is None or not openaudio_service.is_ready:
+        await websocket.close(code=1013, reason="OpenAudio service is unavailable")
         return
 
     try:
@@ -373,28 +373,28 @@ async def text_to_speech_ws(websocket: WebSocket) -> None:
 
             stream = payload.get("stream", True)
             synthesis_kwargs = {
-                "voice": payload.get("voice"),
-                "model": payload.get("model"),
-                "response_format": payload.get("response_format"),
+                "response_format": payload.get("response_format") or payload.get("format"),
                 "sample_rate": payload.get("sample_rate"),
-                "speed": payload.get("speed"),
-                "style": payload.get("style"),
+                "reference_id": payload.get("reference_id"),
+                "normalize": payload.get("normalize"),
+                "references": payload.get("references"),
+                "top_p": payload.get("top_p"),
             }
 
             try:
                 if stream:
-                    stream_result = await higgs_service.synthesize_stream(text=text, **synthesis_kwargs)
+                    stream_result = await openaudio_service.synthesize_stream(
+                        text=text, **synthesis_kwargs
+                    )
+                    metadata_payload = {
+                        "response_format": stream_result.response_format,
+                        "media_type": stream_result.media_type,
+                        "sample_rate": stream_result.sample_rate,
+                    }
+                    if stream_result.reference_id is not None:
+                        metadata_payload["reference_id"] = stream_result.reference_id
                     await websocket.send_json(
-                        {
-                            "event": "metadata",
-                            "data": {
-                                "response_format": stream_result.response_format,
-                                "media_type": stream_result.media_type,
-                                "sample_rate": stream_result.sample_rate,
-                                "voice": stream_result.voice,
-                                "model": stream_result.model,
-                            },
-                        }
+                        {"event": "metadata", "data": metadata_payload}
                     )
                     async for chunk in stream_result.iterator_factory():
                         if not chunk:
@@ -405,23 +405,21 @@ async def text_to_speech_ws(websocket: WebSocket) -> None:
                         )
                     await websocket.send_json({"event": "done"})
                 else:
-                    synthesis = await higgs_service.synthesize(text=text, **synthesis_kwargs)
+                    synthesis = await openaudio_service.synthesize(text=text, **synthesis_kwargs)
+                    synthesis_payload = {
+                        "audio_base64": synthesis.as_base64(),
+                        "response_format": synthesis.response_format,
+                        "media_type": synthesis.media_type,
+                        "sample_rate": synthesis.sample_rate,
+                    }
+                    if synthesis.reference_id is not None:
+                        synthesis_payload["reference_id"] = synthesis.reference_id
                     await websocket.send_json(
-                        {
-                            "event": "synthesis",
-                            "data": {
-                                "audio_base64": synthesis.as_base64(),
-                                "response_format": synthesis.response_format,
-                                "media_type": synthesis.media_type,
-                                "sample_rate": synthesis.sample_rate,
-                                "voice": synthesis.voice,
-                                "model": synthesis.model,
-                            },
-                        }
+                        {"event": "synthesis", "data": synthesis_payload}
                     )
             except RuntimeError:
                 await websocket.send_json(
-                    {"event": "error", "detail": "Failed to synthesise audio with Higgs Audio."}
+                    {"event": "error", "detail": "Failed to synthesise audio with OpenAudio."}
                 )
     except WebSocketDisconnect:
         logger.info("Client disconnected from text-to-speech WebSocket")

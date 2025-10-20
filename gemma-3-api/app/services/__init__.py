@@ -1,7 +1,7 @@
 """Service exports."""
 
 from .conversation import ConversationService, DialogueResult, DialogueStreamResult
-from .higgs import HiggsAudioService, HiggsSynthesisResult, HiggsSynthesisStream
+from .openaudio import OpenAudioService, OpenAudioSynthesisResult, OpenAudioSynthesisStream
 from .llm import LLMService
 from .whisper import WhisperService, WhisperTranscription, WhisperTranscriptionSegment
 
@@ -9,9 +9,9 @@ __all__ = [
     "ConversationService",
     "DialogueResult",
     "DialogueStreamResult",
-    "HiggsAudioService",
-    "HiggsSynthesisResult",
-    "HiggsSynthesisStream",
+    "OpenAudioService",
+    "OpenAudioSynthesisResult",
+    "OpenAudioSynthesisStream",
     "LLMService",
     "WhisperService",
     "WhisperTranscription",
