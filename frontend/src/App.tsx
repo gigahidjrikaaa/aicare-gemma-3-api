@@ -25,7 +25,7 @@ function AppShell() {
         <header className="flex flex-col gap-2 border-b border-slate-800 pb-4">
           <h1 className="text-2xl font-semibold">AICare Speech Playground</h1>
           <p className="text-sm text-slate-300">
-            Exercise the LLM, Whisper transcription, Higgs Audio synthesis, and the orchestrated dialogue pipeline using your
+            Exercise the LLM, Whisper transcription, OpenAudio synthesis, and the orchestrated dialogue pipeline using your
             deployment credentials.
           </p>
           <SettingsPanel />

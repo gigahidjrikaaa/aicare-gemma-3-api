@@ -4,7 +4,7 @@ from typing import AsyncIterator
 import pytest
 
 from app.services.conversation import ConversationService, DialogueResult, DialogueStreamResult
-from app.services.higgs import HiggsSynthesisResult, HiggsSynthesisStream
+from app.services.openaudio import OpenAudioSynthesisResult, OpenAudioSynthesisStream
 from app.services.whisper import WhisperTranscription, WhisperTranscriptionSegment
 
 
@@ -28,34 +28,32 @@ class FakeWhisperService:
         )
 
 
-class FakeHiggsService:
+class FakeOpenAudioService:
     def __init__(self) -> None:
         self._synthesis_calls: list[dict[str, object]] = []
 
-    async def synthesize(self, *, text: str, **kwargs: object) -> HiggsSynthesisResult:
+    async def synthesize(self, *, text: str, **kwargs: object) -> OpenAudioSynthesisResult:
         self._synthesis_calls.append({"text": text, **kwargs})
-        return HiggsSynthesisResult(
+        return OpenAudioSynthesisResult(
             audio=b"fake-bytes",
             response_format="pcm",
             sample_rate=16000,
-            voice="en_woman",
-            model="demo",
+            reference_id="demo-ref",
             media_type="audio/pcm",
         )
 
-    async def synthesize_stream(self, *, text: str, **kwargs: object) -> HiggsSynthesisStream:
+    async def synthesize_stream(self, *, text: str, **kwargs: object) -> OpenAudioSynthesisStream:
         self._synthesis_calls.append({"text": text, **kwargs})
 
         async def iterator() -> AsyncIterator[bytes]:
             yield b"chunk-1"
             yield b"chunk-2"
 
-        return HiggsSynthesisStream(
+        return OpenAudioSynthesisStream(
             iterator_factory=iterator,
             response_format="pcm",
             sample_rate=16000,
-            voice="en_woman",
-            model="demo",
+            reference_id="demo-ref",
             media_type="audio/pcm",
         )
 
@@ -65,7 +63,7 @@ async def test_run_dialogue_returns_compound_result() -> None:
     service = ConversationService(
         llm_service=FakeLLMService(),
         whisper_service=FakeWhisperService(),
-        higgs_service=FakeHiggsService(),
+        openaudio_service=FakeOpenAudioService(),
     )
 
     result = await service.run_dialogue(
@@ -80,6 +78,7 @@ async def test_run_dialogue_returns_compound_result() -> None:
     assert result.transcription.text == "transcribed text"
     assert result.response_text == "Hello from Gemma"
     assert result.synthesis.media_type == "audio/pcm"
+    assert result.synthesis.reference_id == "demo-ref"
 
 
 @pytest.mark.asyncio
@@ -87,7 +86,7 @@ async def test_run_dialogue_streaming_returns_stream_container() -> None:
     service = ConversationService(
         llm_service=FakeLLMService(),
         whisper_service=FakeWhisperService(),
-        higgs_service=FakeHiggsService(),
+        openaudio_service=FakeOpenAudioService(),
     )
 
     result = await service.run_dialogue(
@@ -115,9 +114,16 @@ def test_prepare_synthesis_kwargs_filters_reserved_fields() -> None:
     overrides = {
         "text": "ignored",
         "stream": True,
-        "voice": "en_man",
-        "style": "narration",
+        "reference_id": "demo",
+        "normalize": False,
+        "top_p": 0.7,
+        "format": "wav",
         "speed": None,
     }
     filtered = ConversationService._prepare_synthesis_kwargs(overrides)
-    assert filtered == {"voice": "en_man", "style": "narration"}
+    assert filtered == {
+        "reference_id": "demo",
+        "normalize": False,
+        "top_p": 0.7,
+        "format": "wav",
+    }

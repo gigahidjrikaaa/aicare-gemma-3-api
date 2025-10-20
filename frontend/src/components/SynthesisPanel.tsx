@@ -5,8 +5,9 @@ import { useToast } from "./Toast";
 
 type SpeechResponse = {
   audio_base64?: string;
-  format?: string;
-  metadata?: Record<string, unknown>;
+  response_format?: string;
+  media_type?: string;
+  reference_id?: string | null;
 };
 
 type StreamEvent = {
@@ -15,12 +16,12 @@ type StreamEvent = {
 };
 
 const defaultRequest = {
-  text: "Thanks for testing the Higgs Audio integration!",
-  voice: "alloy",
-  model: "higgs-audio-v2",
-  response_format: "wav",
+  text: "Thanks for testing the OpenAudio integration!",
+  format: "wav",
   sample_rate: 44100,
-  speed: 1,
+  reference_id: "default",
+  normalize: true,
+  top_p: 0.85,
   stream: false
 };
 
@@ -52,7 +53,8 @@ export function SynthesisPanel() {
         body: JSON.stringify({ ...request, stream: false })
       });
       if (data.audio_base64) {
-        const blob = base64ToBlob(data.audio_base64, request.response_format ?? "audio/wav");
+        const format = data.response_format ?? request.format ?? "wav";
+        const blob = base64ToBlob(data.audio_base64, format);
         const url = URL.createObjectURL(blob);
         if (objectUrl) {
           URL.revokeObjectURL(objectUrl);
@@ -93,7 +95,7 @@ export function SynthesisPanel() {
         }
       );
       if (chunks.length) {
-        const blob = new Blob(chunks, { type: `audio/${request.response_format ?? "wav"}` });
+        const blob = new Blob(chunks, { type: `audio/${request.format ?? "wav"}` });
         const url = URL.createObjectURL(blob);
         if (objectUrl) {
           URL.revokeObjectURL(objectUrl);
@@ -120,31 +122,16 @@ export function SynthesisPanel() {
           />
         </label>
         <div className="flex flex-col gap-2">
-          <label className="text-xs uppercase tracking-wide text-slate-400">Voice</label>
-          <input
-            className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
-            value={request.voice}
-            onChange={(event) => setRequest((prev) => ({ ...prev, voice: event.target.value }))}
-          />
-        </div>
-        <div className="flex flex-col gap-2">
-          <label className="text-xs uppercase tracking-wide text-slate-400">Model</label>
-          <input
-            className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
-            value={request.model}
-            onChange={(event) => setRequest((prev) => ({ ...prev, model: event.target.value }))}
-          />
-        </div>
-        <div className="flex flex-col gap-2">
-          <label className="text-xs uppercase tracking-wide text-slate-400">Response format</label>
+          <label className="text-xs uppercase tracking-wide text-slate-400">Format</label>
           <select
             className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
-            value={request.response_format}
-            onChange={(event) => setRequest((prev) => ({ ...prev, response_format: event.target.value }))}
+            value={request.format}
+            onChange={(event) => setRequest((prev) => ({ ...prev, format: event.target.value }))}
           >
             <option value="wav">WAV</option>
             <option value="mp3">MP3</option>
             <option value="ogg">OGG</option>
+            <option value="flac">FLAC</option>
           </select>
         </div>
         <div className="flex flex-col gap-2">
@@ -157,16 +144,33 @@ export function SynthesisPanel() {
           />
         </div>
         <div className="flex flex-col gap-2">
-          <label className="text-xs uppercase tracking-wide text-slate-400">Speed</label>
+          <label className="text-xs uppercase tracking-wide text-slate-400">Reference ID</label>
+          <input
+            className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
+            value={request.reference_id}
+            onChange={(event) => setRequest((prev) => ({ ...prev, reference_id: event.target.value }))}
+          />
+        </div>
+        <div className="flex flex-col gap-2">
+          <label className="text-xs uppercase tracking-wide text-slate-400">Top P</label>
           <input
             type="number"
-            step="0.1"
-            min="0.5"
-            max="2"
+            step="0.05"
+            min="0"
+            max="1"
             className="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm"
-            value={request.speed}
-            onChange={(event) => setRequest((prev) => ({ ...prev, speed: Number(event.target.value) }))}
+            value={request.top_p}
+            onChange={(event) => setRequest((prev) => ({ ...prev, top_p: Number(event.target.value) }))}
           />
+        </div>
+        <label className="flex items-center gap-3 text-xs uppercase tracking-wide text-slate-400 md:col-span-2">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border border-slate-700 bg-slate-950"
+            checked={request.normalize}
+            onChange={(event) => setRequest((prev) => ({ ...prev, normalize: event.target.checked }))}
+          />
+          Normalise audio loudness
         </div>
         <div className="flex items-center gap-2 md:col-span-2">
           <button type="submit" className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950">

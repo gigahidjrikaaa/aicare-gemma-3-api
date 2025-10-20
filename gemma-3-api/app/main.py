@@ -14,7 +14,7 @@ from app.observability import (
 )
 from app.security import RateLimiter
 from app.services.conversation import ConversationService
-from app.services.higgs import HiggsAudioService
+from app.services.openaudio import OpenAudioService
 from app.services.llm import LLMService
 from app.services.whisper import WhisperService
 
@@ -34,9 +34,9 @@ async def lifespan(app: FastAPI):
     await whisper_service.startup()
     app.state.whisper_service = whisper_service
 
-    higgs_service = HiggsAudioService(settings=settings)
-    await higgs_service.startup()
-    app.state.higgs_service = higgs_service
+    openaudio_service = OpenAudioService(settings=settings)
+    await openaudio_service.startup()
+    app.state.openaudio_service = openaudio_service
 
     rate_limiter = RateLimiter(settings=settings)
     app.state.rate_limiter = rate_limiter
@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
     conversation_service = ConversationService(
         llm_service=llm_service,
         whisper_service=whisper_service,
-        higgs_service=higgs_service,
+        openaudio_service=openaudio_service,
     )
     app.state.conversation_service = conversation_service
 
@@ -54,9 +54,9 @@ async def lifespan(app: FastAPI):
         logger.info("Application shutdown...")
         if hasattr(app.state, "conversation_service") and app.state.conversation_service is not None:
             app.state.conversation_service = None
-        if hasattr(app.state, "higgs_service") and app.state.higgs_service is not None:
-            await app.state.higgs_service.shutdown()
-            app.state.higgs_service = None
+        if hasattr(app.state, "openaudio_service") and app.state.openaudio_service is not None:
+            await app.state.openaudio_service.shutdown()
+            app.state.openaudio_service = None
         if hasattr(app.state, "whisper_service") and app.state.whisper_service is not None:
             await app.state.whisper_service.shutdown()
             app.state.whisper_service = None

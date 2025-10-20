@@ -33,12 +33,14 @@ services:
       - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-120}
       - RATE_LIMIT_WINDOW_SECONDS=${RATE_LIMIT_WINDOW_SECONDS:-60}
       - RATE_LIMIT_BURST_MULTIPLIER=${RATE_LIMIT_BURST_MULTIPLIER:-1.0}
-      - HIGGS_API_KEY=${HIGGS_API_KEY:-}
-      - HIGGS_API_BASE=${HIGGS_API_BASE:-http://higgs_audio:8000/v1}
-      - HIGGS_SPEECH_PATH=${HIGGS_SPEECH_PATH:-/audio/speech}
-      - HIGGS_MODEL_ID=${HIGGS_MODEL_ID:-higgs-audio-v2-generation-3B-base}
-      - HIGGS_DEFAULT_VOICE=${HIGGS_DEFAULT_VOICE:-en_woman}
-      - HIGGS_RESPONSE_FORMAT=${HIGGS_RESPONSE_FORMAT:-pcm}
+      - OPENAUDIO_API_KEY=${OPENAUDIO_API_KEY:-}
+      - OPENAUDIO_API_BASE=${OPENAUDIO_API_BASE:-http://openaudio:8080}
+      - OPENAUDIO_TTS_PATH=${OPENAUDIO_TTS_PATH:-/v1/tts}
+      - OPENAUDIO_DEFAULT_FORMAT=${OPENAUDIO_DEFAULT_FORMAT:-wav}
+      - OPENAUDIO_DEFAULT_REFERENCE_ID=${OPENAUDIO_DEFAULT_REFERENCE_ID:-}
+      - OPENAUDIO_DEFAULT_NORMALIZE=${OPENAUDIO_DEFAULT_NORMALIZE:-true}
+      - OPENAUDIO_TIMEOUT_SECONDS=${OPENAUDIO_TIMEOUT_SECONDS:-120}
+      - OPENAUDIO_MAX_RETRIES=${OPENAUDIO_MAX_RETRIES:-3}
     # Expose the port to the host machine for direct testing/access
     ports:
       - "6666:6666"
@@ -50,6 +52,39 @@ services:
       interval: 15s
       timeout: 10s
       retries: 5
+
+  openaudio:
+    image: fishaudio/fish-speech:latest-server-cuda
+    container_name: openaudio
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      - MODEL_NAME=OpenAudio-S1-mini
+    command:
+      [
+        "python",
+        "-m",
+        "tools.api_server",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8080",
+        "--model",
+        "OpenAudio-S1-mini",
+        "--compile",
+      ]
+    volumes:
+      - ./openaudio-checkpoints:/workspace/checkpoints
+    networks:
+      - shared_services_network
+    ports:
+      - "8080:8080"
 
 networks:
   # Declare that the network is external and has been created manually

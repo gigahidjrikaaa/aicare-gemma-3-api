@@ -35,19 +35,19 @@ The app defaults to `http://localhost:8000` but you can override the base URL an
 "Connection settings" drawer in the UI. Build artifacts are emitted to `frontend/dist` via
 `npm run build` and can be hosted on any static site provider or mounted behind the FastAPI service.
 
-## Future Integration: Speech Stack Roadmap
+## Speech Stack Roadmap
 
-The team is planning to extend the text-only Gemma 3 API into a speech-capable platform powered by OpenAI Whisper for speech-to-text (STT) and Higgs Audio V2 for text-to-speech (TTS). The roadmap below focuses on compatibility with the upstream projects and our existing FastAPI/Docker deployment.
+The team is extending the text-only Gemma 3 API into a speech-capable platform powered by OpenAI Whisper for speech-to-text (STT) and OpenAudio-S1-mini for text-to-speech (TTS). The roadmap below focuses on compatibility with the upstream projects and our existing FastAPI/Docker deployment.
 
 ### Phase 0 — Technical due diligence
 
 1. **Repository alignment**
-   - Track the upstream release branches for [OpenAI Whisper](https://github.com/openai/whisper) and [Higgs Audio V2](https://github.com/boson-ai/higgs-audio) to understand Python version requirements (both target Python 3.10+) and CUDA expectations.
+   - Track the upstream release branches for [OpenAI Whisper](https://github.com/openai/whisper) and [Fish Audio / OpenAudio](https://github.com/fishaudio/fish-speech) to understand Python version requirements and CUDA expectations.
    - Decide whether Whisper will run through the `openai` client (managed service) or via local inference (`pip install -U openai-whisper`) to simplify dependency management inside our container.
-   - Validate that Higgs Audio’s `boson_multimodal` Python package can be installed directly in our base image, noting its PyTorch + torchaudio requirements and the documented need for at least a 24 GB GPU for the 3B checkpoint.
+   - Validate that Fish Audio’s server and model checkpoints can be installed directly in our base image, noting PyTorch + torchaudio requirements and GPU memory expectations for OpenAudio-S1-mini.
 2. **Container baseline updates**
-   - Extend the Docker image with FFmpeg (via `apt-get install ffmpeg`) and audio codecs required by Whisper and Higgs Audio examples.
-   - Confirm CUDA toolkit/library compatibility between Whisper, Higgs Audio, and the existing Gemma runtime to avoid conflicting `torch` builds.
+   - Extend the Docker image with FFmpeg (via `apt-get install ffmpeg`) and audio codecs required by Whisper and OpenAudio examples.
+   - Confirm CUDA toolkit/library compatibility between Whisper, OpenAudio, and the existing Gemma runtime to avoid conflicting `torch` builds.
 
 ### Phase 1 — Application scaffolding
 
@@ -55,7 +55,7 @@ The team is planning to extend the text-only Gemma 3 API into a speech-capable p
    - Refactor `gemma-3-api/app/main.py` into a modular layout (`app/services`, `app/api`, `app/config`) so the speech services can share FastAPI lifespan hooks with the current LLM loader without repeated initialization.
    - Define Pydantic models for audio payloads (binary uploads, base64 JSON envelopes, and WebSocket frames) plus transcript/voice settings.
 2. **Configuration and secrets**
-   - Introduce `pydantic-settings` for managing OpenAI API keys, Higgs authentication (token, Hugging Face access if running local checkpoints), default sample rates, and feature flags.
+   - Introduce `pydantic-settings` for managing OpenAI API keys, OpenAudio authentication (token, Hugging Face access if running local checkpoints), default sample rates, and feature flags.
    - Add schema validation for environment variables so misconfigured GPU IDs, missing checkpoints, or absent API keys fail fast at startup.
 
 ### Phase 2 — STT integration with Whisper
@@ -67,14 +67,14 @@ The team is planning to extend the text-only Gemma 3 API into a speech-capable p
 2. **Managed API fallback**
    - Implement an adapter for OpenAI’s hosted Whisper (`client.audio.transcriptions.create`) with retry/backoff logic and consistent response schemas, so deployments without GPUs can switch via configuration.
 
-### Phase 3 — TTS integration with Higgs Audio V2
+### Phase 3 — TTS integration with OpenAudio-S1-mini
 
 1. **Model loading**
-   - Vendor or download the `bosonai/higgs-audio-v2-generation-3B-base` checkpoint and tokenizer during container build, or allow runtime fetch from Hugging Face with cached volumes to respect licensing.
-   - Initialize `HiggsAudioServeEngine` once per process, making device placement configurable (`cuda:{id}` vs. CPU fallback for development) and precomputing voice prompt embeddings when reference samples are provided.
+   - Vendor or download the `fishaudio/OpenAudio-S1-mini` checkpoint during container build, or allow runtime fetch from Hugging Face with cached volumes to respect licensing.
+   - Initialize the Fish Audio API server once per process, making device placement configurable (`cuda:{id}` vs. CPU fallback for development) and preloading reference embeddings when samples are provided.
 2. **Synthesis services**
-   - Offer both blocking synthesis endpoints returning `audio/wav` via `StreamingResponse` and streaming synthesis over WebSocket using chunked PCM/Opus packets assembled from the model’s numpy output.
-   - Implement guardrails for maximum token/audio duration, voice preset validation, and automatic sample-rate conversion to match client expectations.
+   - Offer both blocking synthesis endpoints returning `audio/wav` via `StreamingResponse` and streaming synthesis over WebSocket using chunked PCM/Opus packets assembled from the server response.
+   - Implement guardrails for maximum token/audio duration, reference validation, and automatic sample-rate conversion to match client expectations.
 
 ### Phase 4 — Conversational orchestration
 
@@ -83,14 +83,14 @@ The team is planning to extend the text-only Gemma 3 API into a speech-capable p
    - Support memory persistence (in Redis or an in-process store) keyed by session IDs so dialogue context flows through the pipeline.
 2. **API design**
    - Add REST endpoints `/v1/speech-to-text`, `/v1/text-to-speech`, and `/v1/dialogue`, plus WebSocket channels for live transcription (`/ws/stt`) and synthesis (`/ws/tts`).
-   - Provide consistent error envelopes and partial-result streaming semantics so clients can degrade gracefully (e.g., text-only fallback when Higgs synthesis fails).
+   - Provide consistent error envelopes and partial-result streaming semantics so clients can degrade gracefully (e.g., text-only fallback when OpenAudio synthesis fails).
 
 ### Phase 5 — Reliability, testing, and documentation
 
 1. **Observability**
    - Extend structured logging to include audio payload metadata, stage-level latency metrics, and GPU utilization snapshots. Wire metrics into Prometheus/Grafana if available.
 2. **Testing strategy**
-   - Create unit tests that mock Whisper/Higgs clients, contract tests for the new FastAPI routes (using `httpx.AsyncClient`), and end-to-end smoke tests with small audio fixtures executed under `pytest -m e2e`.
+   - Create unit tests that mock Whisper/OpenAudio clients, contract tests for the new FastAPI routes (using `httpx.AsyncClient`), and end-to-end smoke tests with small audio fixtures executed under `pytest -m e2e`.
    - Add load-test scripts (Locust/K6) to validate concurrent streaming sessions and ensure GPU memory usage stays within safe thresholds.
 3. **Operational playbooks**
    - Document new environment variables, Docker volume mounts for Hugging Face caches, and emergency procedures (e.g., clearing stuck GPU contexts, rotating API keys).
@@ -98,9 +98,9 @@ The team is planning to extend the text-only Gemma 3 API into a speech-capable p
 
 ---
 
-## Phase 2 Implementation Snapshot — Whisper & Higgs Audio Services
+## Phase 2 Implementation Snapshot — Whisper & OpenAudio Services
 
-The FastAPI application now ships with production-ready service wrappers for OpenAI Whisper (speech-to-text) and the Higgs Audio V2 OpenAI-compatible API (text-to-speech). These components are initialised during the application lifespan and exposed through dedicated `/v1/speech` routes.
+The FastAPI application now ships with production-ready service wrappers for OpenAI Whisper (speech-to-text) and the OpenAudio-S1-mini API server (text-to-speech). These components are initialised during the application lifespan and exposed through dedicated `/v1/speech` routes.
 
 ### Configuration
 
@@ -114,12 +114,15 @@ Set the following environment variables (or update `.env`) to enable the integra
 | `OPENAI_WHISPER_RESPONSE_FORMAT` | Response format (e.g. `verbose_json`, `json`, `srt`). |
 | `ENABLE_LOCAL_WHISPER` | Set to `true` to run the open-source Whisper locally; ensure `pip install -U openai-whisper` and FFmpeg are available. |
 | `LOCAL_WHISPER_MODEL` | Model tier used when local inference is enabled (e.g. `large-v3`). |
-| `HIGGS_API_BASE` | Base URL for the Higgs Audio deployment (defaults to `http://localhost:8000/v1`). |
-| `HIGGS_API_KEY` | Bearer token forwarded to Higgs Audio when authentication is required. |
-| `HIGGS_MODEL_ID` | Default Higgs Audio model identifier (defaults to `higgs-audio-v2-generation-3B-base`). |
-| `HIGGS_DEFAULT_VOICE` | Voice preset requested when none is supplied by the client. |
-| `HIGGS_RESPONSE_FORMAT` | Default audio container (`pcm`, `wav`, `mp3`, etc.). |
-| `DEFAULT_AUDIO_SAMPLE_RATE` | Sample rate (Hz) assumed for both Whisper preprocessing and Higgs output. |
+| `OPENAUDIO_API_BASE` | Base URL for the OpenAudio deployment (defaults to `http://localhost:8080`). |
+| `OPENAUDIO_API_KEY` | Bearer token forwarded to OpenAudio when authentication is required. |
+| `OPENAUDIO_TTS_PATH` | Path to the OpenAudio synthesis endpoint (defaults to `/v1/tts`). |
+| `OPENAUDIO_DEFAULT_FORMAT` | Default audio container (`wav`, `mp3`, etc.). |
+| `OPENAUDIO_DEFAULT_REFERENCE_ID` | Reference identifier requested when none is supplied by the client. |
+| `OPENAUDIO_DEFAULT_NORMALIZE` | Whether to request loudness normalisation by default. |
+| `OPENAUDIO_TIMEOUT_SECONDS` | Timeout applied to OpenAudio requests. |
+| `OPENAUDIO_MAX_RETRIES` | Retry attempts for transient OpenAudio failures. |
+| `DEFAULT_AUDIO_SAMPLE_RATE` | Sample rate (Hz) assumed for both Whisper preprocessing and OpenAudio output. |
 
 ### REST endpoints
 
@@ -139,9 +142,9 @@ Set the following environment variables (or update `.env`) to enable the integra
      -H "Content-Type: application/json" \
      -d '{
        "text": "Today is a wonderful day to build something people love!",
-       "voice": "en_woman",
-       "response_format": "pcm"
-     }' | jq -r '.audio_base64' | base64 --decode > speech.pcm
+       "format": "wav",
+       "reference_id": "default"
+     }' | jq -r '.audio_base64' | base64 --decode > speech.wav
    ```
 
    To stream directly to a file:
@@ -150,17 +153,16 @@ Set the following environment variables (or update `.env`) to enable the integra
    curl -X POST "http://localhost:6666/v1/text-to-speech" \
      -H "Content-Type: application/json" \
      -d '{
-       "text": "Welcome to the Higgs Audio powered API!",
-       "voice": "en_woman",
+       "text": "Welcome to the OpenAudio powered API!",
        "stream": true,
-       "response_format": "pcm"
-     }' --output speech.pcm
+       "format": "wav"
+     }' --output speech.wav
    ```
 
 ### Service lifecycle
 
 - `app.services.whisper.WhisperService` lazily loads the requested Whisper backend (remote or local) and exposes a unified transcription interface used by the API router.
-- `app.services.higgs.HiggsAudioService` manages an `httpx.AsyncClient`, performs retries for transient network issues, and supports both blocking and streaming synthesis flows.
+- `app.services.openaudio.OpenAudioService` manages an `httpx.AsyncClient`, performs retries for transient network issues, and supports both blocking and streaming synthesis flows.
 - Both services are initialised in `app/main.py` alongside the existing Gemma 3 LLM service and are stored on `app.state` for reuse across requests.
 
 ## Phase 4 Implementation Snapshot — Observability, Security & Quality
@@ -168,7 +170,7 @@ Set the following environment variables (or update `.env`) to enable the integra
 Recent changes harden the platform for production operations:
 
 - Structured logging with request identifiers via a middleware that also records latency metrics for each HTTP request.
-- Prometheus-compatible metrics exposed on `/metrics`, including histograms for HTTP requests, external dependencies (Whisper, Higgs Audio, Gemma), and end-to-end dialogue orchestration.
+- Prometheus-compatible metrics exposed on `/metrics`, including histograms for HTTP requests, external dependencies (Whisper, OpenAudio, Gemma), and end-to-end dialogue orchestration.
 - Configurable API key enforcement applied to REST endpoints and validated during WebSocket handshakes.
 - Expanded configuration options for log level, request ID propagation, and API key management backed by `pydantic-settings` parsing.
 - Automated tests (run with `pytest`) covering the conversation service helpers and API key guardrails.
